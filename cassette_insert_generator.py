@@ -1055,6 +1055,7 @@ def draw_front(
     tape_format,
     template,
     foreground_path,
+    background_path,
     font_color,
 ):
 
@@ -1230,12 +1231,25 @@ def draw_front(
             font_color
         )
 
-        c.rect(
-            artwork_x,
-            artwork_y,
-            artwork_w,
-            artwork_h,
-        )
+        # Sem background:
+        # mantém o quadrado "A" original.
+        #
+        # Com background e sem foreground:
+        # remove completamente o quadrado "A".
+        #
+        # Com foreground:
+        # mantém a área delimitada para o foreground.
+        if (
+            not background_path
+            or foreground_path
+        ):
+
+            c.rect(
+                artwork_x,
+                artwork_y,
+                artwork_w,
+                artwork_h,
+            )
 
         if foreground_path:
 
@@ -1248,7 +1262,7 @@ def draw_front(
                 artwork_h,
             )
 
-        else:
+        elif not background_path:
 
             centered(
                 c,
@@ -1424,6 +1438,7 @@ def draw_insert(
         tape_format,
         template,
         foreground_path,
+        background_path,
         font_color,
     )
 
