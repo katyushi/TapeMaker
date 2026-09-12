@@ -1,10 +1,10 @@
 import re
-import sys
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, ttk, colorchooser
 
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.pdfmetrics import stringWidth
@@ -14,10 +14,6 @@ from reportlab.pdfgen import canvas
 # ============================================================
 # Font
 # ============================================================
-
-# Use a real Unicode TTF whenever possible.  The PDF must not
-# fall back to Helvetica for track titles containing characters
-# such as "：" or other non-ASCII punctuation.
 
 FONT_PATHS = [
     r"C:\Windows\Fonts\segoeui.ttf",
@@ -42,6 +38,7 @@ def find_font(paths):
     for path in paths:
         if Path(path).exists():
             return path
+
     return None
 
 
@@ -51,7 +48,10 @@ bold_font = find_font(FONT_BOLD_PATHS)
 if regular_font:
     try:
         pdfmetrics.registerFont(
-            TTFont("TapeMaker-Regular", regular_font)
+            TTFont(
+                "TapeMaker-Regular",
+                regular_font,
+            )
         )
         REGULAR = "TapeMaker-Regular"
     except Exception:
@@ -59,10 +59,14 @@ if regular_font:
 else:
     REGULAR = "Helvetica"
 
+
 if bold_font:
     try:
         pdfmetrics.registerFont(
-            TTFont("TapeMaker-Bold", bold_font)
+            TTFont(
+                "TapeMaker-Bold",
+                bold_font,
+            )
         )
         BOLD = "TapeMaker-Bold"
     except Exception:
@@ -72,6 +76,7 @@ else:
 
 
 # ============================================================
+# Physical dimensions
 # ============================================================
 
 MM = 72.0 / 25.4
@@ -101,6 +106,10 @@ CARD_W = CARD_W_MM * MM
 PAGE_MARGIN = PAGE_MARGIN_MM * MM
 
 
+# ============================================================
+# File matching
+# ============================================================
+
 SIDE_RE = re.compile(
     r"^Tape\s+(\d+)\s+-\s+Side\s+([AB])\.txt$",
     re.IGNORECASE,
@@ -108,7 +117,7 @@ SIDE_RE = re.compile(
 
 
 # ============================================================
-# Track title cleanup
+# Audio extensions
 # ============================================================
 
 AUDIO_EXTENSIONS = (
@@ -127,12 +136,12 @@ AUDIO_EXTENSIONS = (
 
 def remove_audio_extension(title: str) -> str:
     """
-    Removes an audio extension, including manifests where the
-    filename ended up with repeated dots before the extension:
+    Remove audio extensions, including malformed cases
+    such as:
 
-        Song.opus
-        Song..opus
-        Song...opus
+        song.opus
+        song..opus
+        song...opus
     """
 
     title = title.strip()
@@ -152,25 +161,21 @@ def remove_audio_extension(title: str) -> str:
 
 def clean_track_title(title: str) -> str:
     """
-    Real Compiler line:
+    Remove duplicate internal track numbering.
 
-        001. 001 - Red Army Choir： Partisan's Song..opus [2:51]
+    Example:
 
-    Result:
+        001. 001 - Artist - Song..opus
 
-        Red Army Choir： Partisan's Song
+    becomes:
+
+        Artist - Song
     """
 
-    title = remove_audio_extension(title)
+    title = remove_audio_extension(
+        title
+    )
 
-    # Remove the internal Compiler track number.
-    # This is what prevents:
-    #
-    #     001. 001 - Title
-    #
-    # from becoming:
-    #
-    #     1. 001 - Title
     title = re.sub(
         r"^\s*\d+\s*[-.)]\s*",
         "",
@@ -181,67 +186,46 @@ def clean_track_title(title: str) -> str:
 
 
 # ============================================================
-# Manifest
+# Manifest parser
 # ============================================================
 
 TRACK_LINE_RE = re.compile(
-    r"^\s*(\d+)\.\s+(\d+)\s*[-.)]\s*(.*?)"
-    r"\s*(?:\[(\d{1,2}:\d{2}(?::\d{2})?)\])?\s*$"
+    r"^\s*(\d+)\.\s+"
+    r"(\d+)\s*[-.)]\s*"
+    r"(.*?)"
+    r"\s*(?:\[(\d{1,2}:\d{2}(?::\d{2})?)\])?"
+    r"\s*$"
 )
-
-SIDE_LINE_RE = re.compile(
-    r"^Tape\s+(\d+)\s*-\s*Side\s+([AB])$",
-    re.IGNORECASE,
-)
-
-
-def normalize_manifest_text(text: str) -> str:
-    """
-    Explicitly normalize Windows CRLF/CR to LF and preserve
-    Unicode as Unicode.
-    """
-
-    text = text.replace("\r\n", "\n")
-    text = text.replace("\r", "\n")
-
-    return text
 
 
 def parse_manifest(path: Path) -> dict:
-    """
-    Parses the actual Compiler manifest format.
-
-    The first non-empty line is the mixtape name.
-    Tape/side are taken from their own exact line.
-    Tracklist parsing is restricted to the TRACKLIST section.
-    """
 
     text = path.read_text(
         encoding="utf-8-sig",
         errors="strict",
     )
 
-    text = normalize_manifest_text(text)
-
-    raw_lines = text.split("\n")
-
-    # Keep the first non-empty line as the mixtape name.
-    first_non_empty = next(
-        (
-            line.strip()
-            for line in raw_lines
-            if line.strip()
-        ),
-        None,
+    text = text.replace(
+        "\r\n",
+        "\n",
     )
 
-    if not first_non_empty:
-        raise ValueError(
-            f"Manifest is empty: {path}"
-        )
+    text = text.replace(
+        "\r",
+        "\n",
+    )
+
+    raw_lines = text.split(
+        "\n"
+    )
+
+    lines = [
+        line.strip()
+        for line in raw_lines
+    ]
 
     data = {
-        "name": first_non_empty,
+        "name": None,
         "tape": None,
         "side": None,
         "format": None,
@@ -251,71 +235,140 @@ def parse_manifest(path: Path) -> dict:
         "tracks": [],
     }
 
-    # Tape/side must come from the exact Tape XX - Side X line.
-    for raw_line in raw_lines:
-        line = raw_line.strip()
+    # --------------------------------------------------------
+    # Mixtape name
+    # --------------------------------------------------------
 
-        match = SIDE_LINE_RE.match(line)
+    first_non_empty = next(
+        (
+            line
+            for line in lines
+            if line
+        ),
+        None,
+    )
 
-        if match:
-            data["tape"] = int(match.group(1))
-            data["side"] = match.group(2).upper()
-            break
+    data["name"] = (
+        first_non_empty
+    )
 
-    if data["tape"] is None:
-        raise ValueError(
-            f"Could not find 'Tape XX - Side A/B' in: {path}"
+    # --------------------------------------------------------
+    # Metadata
+    # --------------------------------------------------------
+
+    for line in lines:
+
+        if line.startswith(
+            "Tape "
+        ) and " - Side " in line:
+
+            match = re.match(
+                r"^Tape\s+(\d+)\s+-\s+Side\s+([AB])$",
+                line,
+                re.IGNORECASE,
+            )
+
+            if match:
+                data["tape"] = int(
+                    match.group(1)
+                )
+
+                data["side"] = (
+                    match.group(2).upper()
+                )
+
+            continue
+
+        if ":" not in line:
+            continue
+
+        key, value = line.split(
+            ":",
+            1,
         )
 
-    # Metadata uses exact prefixes.
-    for raw_line in raw_lines:
-        line = raw_line.strip()
+        key = key.strip().lower()
+        value = value.strip()
 
-        if line.startswith("Format:"):
-            data["format"] = line.split(":", 1)[1].strip()
+        if key in (
+            "mixtape",
+            "name",
+            "title",
+        ):
+            data["name"] = value
 
-        elif line.startswith("Runtime:"):
-            data["runtime"] = line.split(":", 1)[1].strip()
+        elif key in (
+            "tape",
+            "cassette",
+        ):
+            tape_match = re.search(
+                r"(\d+)",
+                value,
+            )
 
-        elif line.startswith("Capacity:"):
-            data["capacity"] = line.split(":", 1)[1].strip()
+            if tape_match:
+                data["tape"] = int(
+                    tape_match.group(1)
+                )
 
-        elif line.startswith("Fade:"):
-            data["fade"] = line.split(":", 1)[1].strip()
+        elif key == "side":
+            data["side"] = (
+                value.upper()
+            )
 
-    # Find TRACKLIST exactly.
-    tracklist_index = None
+        elif key == "format":
+            data["format"] = value
 
-    for index, raw_line in enumerate(raw_lines):
-        if raw_line.strip().upper() == "TRACKLIST":
-            tracklist_index = index
-            break
+        elif key == "runtime":
+            data["runtime"] = value
 
-    if tracklist_index is None:
-        raise ValueError(
-            f"TRACKLIST not found in: {path}"
-        )
+        elif key == "capacity":
+            data["capacity"] = value
 
-    # Parse only actual track lines.
-    for raw_line in raw_lines[tracklist_index + 1:]:
-        line = raw_line.strip()
+        elif key == "fade":
+            data["fade"] = value
+
+    # --------------------------------------------------------
+    # Tracklist
+    # --------------------------------------------------------
+
+    in_tracks = False
+
+    for line in lines:
+
+        if line.upper().startswith(
+            "TRACKLIST"
+        ):
+            in_tracks = True
+            continue
+
+        if not in_tracks:
+            continue
 
         if not line:
             continue
 
-        match = TRACK_LINE_RE.match(line)
+        match = TRACK_LINE_RE.match(
+            line
+        )
 
         if not match:
             continue
 
-        number = int(match.group(1))
-        title = clean_track_title(
-            match.group(3)
+        number = int(
+            match.group(1)
         )
-        duration = match.group(4) or ""
 
-        if not title:
-            continue
+        title = match.group(3).strip()
+
+        duration = (
+            match.group(4)
+            or ""
+        )
+
+        title = clean_track_title(
+            title
+        )
 
         data["tracks"].append(
             (
@@ -325,24 +378,20 @@ def parse_manifest(path: Path) -> dict:
             )
         )
 
-    if not data["tracks"]:
-        raise ValueError(
-            f"No tracks were parsed from: {path}"
-        )
-
     return data
 
 
+# ============================================================
+# Mixtape scanner
+# ============================================================
+
 def scan_mixtape(
     folder: Path,
-) -> dict[int, dict[str, dict]]:
+) -> dict:
 
     tapes = {}
 
-    for path in sorted(
-        folder.iterdir(),
-        key=lambda p: p.name.lower(),
-    ):
+    for path in folder.iterdir():
 
         if not path.is_file():
             continue
@@ -360,27 +409,24 @@ def scan_mixtape(
 
         side = match.group(2).upper()
 
-        manifest = parse_manifest(path)
-
-        if manifest["tape"] != tape_number:
-            raise ValueError(
-                f"Tape number mismatch in: {path}"
-            )
-
-        if manifest["side"] != side:
-            raise ValueError(
-                f"Side mismatch in: {path}"
-            )
+        manifest = parse_manifest(
+            path
+        )
 
         tapes.setdefault(
             tape_number,
             {},
         )[side] = manifest
 
-    return dict(sorted(tapes.items()))
+    return dict(
+        sorted(
+            tapes.items()
+        )
+    )
 
 
 # ============================================================
+# Text helpers
 # ============================================================
 
 def fit_text(
@@ -426,7 +472,10 @@ def fit_text(
 
     for char in text:
 
-        candidate = result + char
+        candidate = (
+            result
+            + char
+        )
 
         if stringWidth(
             candidate,
@@ -437,7 +486,10 @@ def fit_text(
 
         result = candidate
 
-    return result + suffix, size
+    return (
+        result + suffix,
+        size,
+    )
 
 
 def centered(
@@ -482,7 +534,6 @@ def wrap_text(
         return [""]
 
     lines = []
-
     current = ""
 
     for word in text.split():
@@ -503,8 +554,11 @@ def wrap_text(
             continue
 
         if current:
-            lines.append(current)
-            current = ""
+            lines.append(
+                current
+            )
+
+        current = ""
 
         segment = word
 
@@ -516,7 +570,9 @@ def wrap_text(
             ) > max_width
         ):
 
-            cut = len(segment)
+            cut = len(
+                segment
+            )
 
             while (
                 cut > 1
@@ -532,14 +588,139 @@ def wrap_text(
                 segment[:cut]
             )
 
-            segment = segment[cut:]
+            segment = segment[
+                cut:
+            ]
 
         current = segment
 
     if current:
-        lines.append(current)
+        lines.append(
+            current
+        )
 
     return lines or [""]
+
+
+# ============================================================
+# Artwork helpers
+# ============================================================
+
+IMAGE_EXTENSIONS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".bmp",
+    ".gif",
+    ".tif",
+    ".tiff",
+}
+
+
+def draw_cover_image(
+    c,
+    image_path,
+    x,
+    y,
+    width,
+    height,
+):
+    """
+    Draw an image using cover/crop behavior.
+
+    The image completely fills the requested area.
+    """
+
+    if not image_path:
+        return
+
+    path = Path(
+        image_path
+    )
+
+    if not path.is_file():
+        return
+
+    try:
+        image = ImageReader(
+            str(path)
+        )
+
+        image_width, image_height = (
+            image.getSize()
+        )
+
+        if (
+            image_width <= 0
+            or image_height <= 0
+        ):
+            return
+
+        scale = max(
+            width / image_width,
+            height / image_height,
+        )
+
+        draw_width = (
+            image_width
+            * scale
+        )
+
+        draw_height = (
+            image_height
+            * scale
+        )
+
+        draw_x = (
+            x
+            + (
+                width
+                - draw_width
+            )
+            / 2
+        )
+
+        draw_y = (
+            y
+            + (
+                height
+                - draw_height
+            )
+            / 2
+        )
+
+        c.saveState()
+
+        clip = c.beginPath()
+
+        clip.rect(
+            x,
+            y,
+            width,
+            height,
+        )
+
+        c.clipPath(
+            clip,
+            stroke=0,
+            fill=0,
+        )
+
+        c.drawImage(
+            image,
+            draw_x,
+            draw_y,
+            width=draw_width,
+            height=draw_height,
+            preserveAspectRatio=False,
+            mask="auto",
+        )
+
+        c.restoreState()
+
+    except Exception:
+        pass
 
 
 # ============================================================
@@ -557,7 +738,9 @@ def crop_marks(
     mark = 3 * MM
     gap = 1.5 * MM
 
-    c.setLineWidth(0.5)
+    c.setLineWidth(
+        0.5
+    )
 
     c.line(
         x - gap - mark,
@@ -645,7 +828,7 @@ def fold_line(
 
 
 # ============================================================
-# Back / tracklist
+# Back / Tracklist
 # ============================================================
 
 def draw_back_tracklists(
@@ -653,11 +836,16 @@ def draw_back_tracklists(
     x,
     y,
     mixtape_name,
-    volume_label_text,
+    volume_label,
     sides,
+    font_color,
 ):
 
     padding = 4.5 * MM
+
+    c.setFillColor(
+        font_color
+    )
 
     centered(
         c,
@@ -669,10 +857,11 @@ def draw_back_tracklists(
         10,
     )
 
-    if volume_label_text:
+    if volume_label:
+
         centered(
             c,
-            volume_label_text,
+            volume_label,
             x + padding,
             y + CARD_H - 15 * MM,
             BACK_W - 2 * padding,
@@ -688,7 +877,9 @@ def draw_back_tracklists(
         - gap
     ) / 2
 
-    left_x = x + padding
+    left_x = (
+        x + padding
+    )
 
     right_x = (
         left_x
@@ -699,11 +890,7 @@ def draw_back_tracklists(
     top_y = (
         y
         + CARD_H
-        - (
-            24 * MM
-            if volume_label_text
-            else 18 * MM
-        )
+        - 24 * MM
     )
 
     bottom_y = (
@@ -726,6 +913,10 @@ def draw_back_tracklists(
             [],
         )
 
+        c.setFillColor(
+            font_color
+        )
+
         c.setFont(
             BOLD,
             6.5,
@@ -743,97 +934,64 @@ def draw_back_tracklists(
         )
 
         size = 5.8
-        line_height = 3.25 * MM
+        line_height = (
+            3.25 * MM
+        )
 
-        for number, title, duration in tracks:
+        for (
+            number,
+            title,
+            duration,
+        ) in tracks:
 
-            # Number is normalized to remove leading zeroes.
-            # The internal duplicate number was already removed
-            # by clean_track_title().
-            prefix = f"{int(number)}. "
-
-            duration_text = (
-                f" [{duration}]"
-                if duration
-                else ""
+            title = clean_track_title(
+                title
             )
 
-            available = (
-                column_width
-                - stringWidth(
-                    prefix,
-                    REGULAR,
-                    size,
-                )
-                - stringWidth(
-                    duration_text,
-                    REGULAR,
-                    size,
-                )
-                - 1.5 * MM
+            text = (
+                f"{number}. {title}"
             )
 
-            title_lines = wrap_text(
+            if duration:
+                text += (
+                    f" [{duration}]"
+                )
+
+            lines = wrap_text(
                 c,
-                title,
+                text,
                 REGULAR,
                 size,
-                max(10, available),
+                column_width,
             )
 
-            for line_index, title_line in enumerate(
-                title_lines
-            ):
+            for line in lines:
 
                 if cursor_y < bottom_y:
                     return
 
-                if line_index == 0:
-                    text = prefix + title_line
+                c.setFillColor(
+                    font_color
+                )
 
-                    if duration_text:
-                        # Duration is kept on the first line if it fits.
-                        first_width = stringWidth(
-                            text + duration_text,
-                            REGULAR,
-                            size,
-                        )
+                c.setFont(
+                    REGULAR,
+                    size,
+                )
 
-                        if first_width <= column_width:
-                            text += duration_text
+                c.drawString(
+                    column_x,
+                    cursor_y,
+                    line,
+                )
 
-                    c.setFont(
-                        REGULAR,
-                        size,
-                    )
+                cursor_y -= (
+                    line_height
+                )
 
-                    c.drawString(
-                        column_x,
-                        cursor_y,
-                        text,
-                    )
-
-                else:
-                    indent = stringWidth(
-                        prefix,
-                        REGULAR,
-                        size,
-                    )
-
-                    c.setFont(
-                        REGULAR,
-                        size,
-                    )
-
-                    c.drawString(
-                        column_x + indent,
-                        cursor_y,
-                        title_line,
-                    )
-
-                cursor_y -= line_height
-
-            cursor_y -= 0.8 * MM
+            cursor_y -= (
+                0.8 * MM
+            )
 
     draw_side(
         "A",
@@ -855,9 +1013,14 @@ def draw_spine(
     x,
     y,
     text,
+    font_color,
 ):
 
     c.saveState()
+
+    c.setFillColor(
+        font_color
+    )
 
     c.translate(
         x + SPINE_W / 2,
@@ -866,8 +1029,6 @@ def draw_spine(
 
     c.rotate(90)
 
-    # The 4 mm spine is extremely narrow, so fit the complete
-    # "Mixtape — Volume 2" label into the available length.
     centered(
         c,
         text,
@@ -875,7 +1036,7 @@ def draw_spine(
         -2,
         CARD_H - 8 * MM,
         BOLD,
-        5.5,
+        6,
     )
 
     c.restoreState()
@@ -890,10 +1051,16 @@ def draw_front(
     x,
     y,
     mixtape_name,
-    volume_label_text,
+    volume_label,
     tape_format,
     template,
+    foreground_path,
+    font_color,
 ):
+
+    c.setFillColor(
+        font_color
+    )
 
     # --------------------------------------------------------
     # Minimal
@@ -911,10 +1078,11 @@ def draw_front(
             13,
         )
 
-        if volume_label_text:
+        if volume_label:
+
             centered(
                 c,
-                volume_label_text,
+                volume_label,
                 x + 4 * MM,
                 y + CARD_H / 2 - 8 * MM,
                 FRONT_W - 8 * MM,
@@ -925,7 +1093,7 @@ def draw_front(
         return
 
     # --------------------------------------------------------
-    # J-card / Full insert
+    # Common title
     # --------------------------------------------------------
 
     centered(
@@ -938,10 +1106,11 @@ def draw_front(
         11,
     )
 
-    if volume_label_text:
+    if volume_label:
+
         centered(
             c,
-            volume_label_text,
+            volume_label,
             x + 4 * MM,
             y + CARD_H - 19 * MM,
             FRONT_W - 8 * MM,
@@ -949,20 +1118,35 @@ def draw_front(
             7,
         )
 
+    # --------------------------------------------------------
+    # J-card
+    # --------------------------------------------------------
+
     if template == "J-card":
 
-        cassette_x = x + 10 * MM
-        cassette_y = y + 27 * MM
+        cassette_x = (
+            x + 10 * MM
+        )
+
+        cassette_y = (
+            y + 27 * MM
+        )
 
         cassette_w = (
             FRONT_W
             - 20 * MM
         )
 
-        cassette_h = 38 * MM
+        cassette_h = (
+            38 * MM
+        )
 
         c.setLineWidth(
             0.8
+        )
+
+        c.setStrokeColor(
+            font_color
         )
 
         c.roundRect(
@@ -988,7 +1172,9 @@ def draw_front(
             - 20 * MM
         )
 
-        window_h = 12 * MM
+        window_h = (
+            12 * MM
+        )
 
         c.roundRect(
             window_x,
@@ -1012,28 +1198,71 @@ def draw_front(
             4 * MM,
         )
 
+    # --------------------------------------------------------
+    # Full insert
+    # --------------------------------------------------------
+
     elif template == "Full insert":
+
+        artwork_x = (
+            x + 5 * MM
+        )
+
+        artwork_y = (
+            y + 20 * MM
+        )
+
+        artwork_w = (
+            FRONT_W
+            - 10 * MM
+        )
+
+        artwork_h = (
+            CARD_H
+            - 46 * MM
+        )
 
         c.setLineWidth(
             0.6
         )
 
-        c.rect(
-            x + 5 * MM,
-            y + 20 * MM,
-            FRONT_W - 10 * MM,
-            CARD_H - 46 * MM,
+        c.setStrokeColor(
+            font_color
         )
 
-        centered(
-            c,
-            "A",
-            x + 5 * MM,
-            y + 30 * MM,
-            FRONT_W - 10 * MM,
-            BOLD,
-            18,
+        c.rect(
+            artwork_x,
+            artwork_y,
+            artwork_w,
+            artwork_h,
         )
+
+        if foreground_path:
+
+            draw_cover_image(
+                c,
+                foreground_path,
+                artwork_x,
+                artwork_y,
+                artwork_w,
+                artwork_h,
+            )
+
+        else:
+
+            centered(
+                c,
+                "A",
+                artwork_x,
+                y + 30 * MM,
+                artwork_w,
+                BOLD,
+                18,
+            )
+
+    # --------------------------------------------------------
+    # Format
+    # --------------------------------------------------------
 
     centered(
         c,
@@ -1055,10 +1284,13 @@ def draw_insert(
     x,
     y,
     mixtape_name,
-    volume_label_text,
+    volume_label,
     sides,
     tape_format,
     template,
+    foreground_path,
+    background_path,
+    font_color,
 ):
 
     spine1_x = (
@@ -1066,11 +1298,42 @@ def draw_insert(
     )
 
     front_x = (
-        spine1_x + SPINE_W
+        spine1_x
+        + SPINE_W
     )
 
     spine2_x = (
-        front_x + FRONT_W
+        front_x
+        + FRONT_W
+    )
+
+    # ========================================================
+    # BACKGROUND
+    #
+    # This MUST be the first visual element.
+    # ========================================================
+
+    if background_path:
+
+        draw_cover_image(
+            c,
+            background_path,
+            x,
+            y,
+            CARD_W,
+            CARD_H,
+        )
+
+    # ========================================================
+    # Layout lines
+    # ========================================================
+
+    c.setStrokeColor(
+        font_color
+    )
+
+    c.setFillColor(
+        font_color
     )
 
     c.setLineWidth(
@@ -1115,53 +1378,72 @@ def draw_insert(
         CARD_H,
     )
 
+    # ========================================================
+    # Back
+    # ========================================================
+
     draw_back_tracklists(
         c,
         x,
         y,
         mixtape_name,
-        volume_label_text,
+        volume_label,
         sides,
+        font_color,
     )
 
-    # Both spines carry the same physical identification.
-    # For a multi-tape mixtape:
-    #
-    #     Sexy times — Volume 2
-    #
-    # For a single tape:
-    #
-    #     Sexy times
-    spine_text = mixtape_name
-
-    if volume_label_text:
-        spine_text = (
-            f"{mixtape_name} — "
-            f"{volume_label_text}"
-        )
+    # ========================================================
+    # Spine 1
+    # ========================================================
 
     draw_spine(
         c,
         spine1_x,
         y,
-        spine_text,
+        (
+            mixtape_name
+            + (
+                f" — {volume_label}"
+                if volume_label
+                else ""
+            )
+        ),
+        font_color,
     )
+
+    # ========================================================
+    # Front
+    # ========================================================
 
     draw_front(
         c,
         front_x,
         y,
         mixtape_name,
-        volume_label_text,
+        volume_label,
         tape_format,
         template,
+        foreground_path,
+        font_color,
     )
+
+    # ========================================================
+    # Spine 2
+    # ========================================================
 
     draw_spine(
         c,
         spine2_x,
         y,
-        spine_text,
+        (
+            mixtape_name
+            + (
+                f" — {volume_label}"
+                if volume_label
+                else ""
+            )
+        ),
+        font_color,
     )
 
 
@@ -1173,6 +1455,9 @@ def generate_pdf(
     folder,
     output_path,
     template,
+    foreground_path=None,
+    background_path=None,
+    font_color=(0, 0, 0),
 ):
 
     tapes = scan_mixtape(
@@ -1181,7 +1466,8 @@ def generate_pdf(
 
     if not tapes:
         raise ValueError(
-            "No 'Tape XX - Side A/B.txt' manifests were found."
+            "No 'Tape XX - Side A/B.txt' "
+            "manifests were found."
         )
 
     usable_width = (
@@ -1196,12 +1482,14 @@ def generate_pdf(
 
     if CARD_W > usable_width:
         raise ValueError(
-            "Insert is wider than the configured A4 safe area."
+            "Insert is wider than the "
+            "configured A4 safe area."
         )
 
     if CARD_H > usable_height:
         raise ValueError(
-            "Insert is taller than the configured A4 safe area."
+            "Insert is taller than the "
+            "configured A4 safe area."
         )
 
     pdf = canvas.Canvas(
@@ -1218,18 +1506,21 @@ def generate_pdf(
     )
 
     x = (
-        A4_W - CARD_W
+        A4_W
+        - CARD_W
     ) / 2
 
     y = (
-        A4_H - CARD_H
+        A4_H
+        - CARD_H
     ) / 2
 
-    total_tapes = len(tapes)
+    total_tapes = len(
+        tapes
+    )
 
-    # Volume numbering is the physical page order, not the raw
-    # compiler tape number.  This guarantees Volume 1, Volume 2,
-    # etc. when multiple physical tapes exist.
+    # Physical tapes are ordered by their
+    # actual Tape XX number.
     for volume_index, (
         tape_number,
         sides,
@@ -1255,32 +1546,48 @@ def generate_pdf(
             or ""
         )
 
+        # One physical tape:
+        #
+        #     no "Tape 01"
+        #     no "Volume 1"
+        #
+        # Multiple physical tapes:
+        #
+        #     Volume 1
+        #     Volume 2
+        #     Volume 3
+        #
         if total_tapes > 1:
-            volume_label_text = (
+
+            volume_label = (
                 f"Volume {volume_index}"
             )
+
         else:
-            volume_label_text = ""
+
+            volume_label = ""
 
         draw_insert(
             pdf,
             x,
             y,
             folder.name,
-            volume_label_text,
+            volume_label,
             sides,
             tape_format,
             template,
+            foreground_path,
+            background_path,
+            font_color,
         )
 
         pdf.showPage()
 
     pdf.save()
 
-    return len(tapes)
+    return total_tapes
 
 
-# ============================================================
 # ============================================================
 # GUI
 # ============================================================
@@ -1294,27 +1601,56 @@ TEMPLATES = (
 
 class App:
 
-    def __init__(self, root):
+    def __init__(
+        self,
+        root,
+    ):
 
         self.root = root
 
         self.root.title(
-            "TapeMaker — Insert Generator"
+            "TapeMaker — Insert Generator v3"
         )
 
         self.root.geometry(
-            "780x560"
+            "900x700"
         )
 
         self.root.minsize(
-            700,
-            500,
+            800,
+            600,
         )
 
         self.folder = None
         self.tapes = {}
 
+        # ----------------------------------------------------
+        # Artwork
+        # ----------------------------------------------------
+
+        self.foreground_path = None
+        self.background_path = None
+
+        # ----------------------------------------------------
+        # Font color
+        # ----------------------------------------------------
+
+        self.font_color = (
+            0,
+            0,
+            0,
+        )
+
+        self.font_color_hex = (
+            "#000000"
+        )
+
         self.build()
+
+
+    # ========================================================
+    # GUI
+    # ========================================================
 
     def build(self):
 
@@ -1328,11 +1664,15 @@ class App:
             expand=True,
         )
 
+        # ----------------------------------------------------
+        # Title
+        # ----------------------------------------------------
+
         ttk.Label(
             outer,
             text=(
                 "TapeMaker — "
-                "Insert / J-card Generator"
+                "Insert / J-card Generator v3"
             ),
             font=(
                 "TkDefaultFont",
@@ -1347,14 +1687,18 @@ class App:
             outer,
             text=(
                 "Select one compiled mixtape folder. "
-                "TapeMaker will generate every tape "
-                "as a real-size insert on A4."
+                "TapeMaker will generate every physical "
+                "tape as a real-size insert on A4."
             ),
-            wraplength=720,
+            wraplength=820,
         ).pack(
             anchor="w",
             pady=(4, 16),
         )
+
+        # ----------------------------------------------------
+        # Folder
+        # ----------------------------------------------------
 
         ttk.Label(
             outer,
@@ -1394,6 +1738,10 @@ class App:
             side="left",
             padx=(8, 0),
         )
+
+        # ----------------------------------------------------
+        # Template
+        # ----------------------------------------------------
 
         template_box = ttk.LabelFrame(
             outer,
@@ -1441,14 +1789,162 @@ class App:
         ttk.Label(
             template_row,
             text=(
-                f"  A4 • 100% / Actual Size • "
+                f"A4 • 100% / Actual Size • "
                 f"{CARD_W_MM:.1f} × "
                 f"{CARD_H_MM:.1f} mm"
             ),
         ).pack(
             side="left",
-            padx=(12, 0),
+            padx=(16, 0),
         )
+
+        # ----------------------------------------------------
+        # Artwork
+        # ----------------------------------------------------
+
+        artwork_box = ttk.LabelFrame(
+            outer,
+            text="Artwork",
+            padding=10,
+        )
+
+        artwork_box.pack(
+            fill="x",
+            pady=(12, 0),
+        )
+
+        # Foreground
+
+        foreground_row = ttk.Frame(
+            artwork_box
+        )
+
+        foreground_row.pack(
+            fill="x",
+            pady=(0, 6),
+        )
+
+        ttk.Button(
+            foreground_row,
+            text="Select foreground…",
+            command=self.select_foreground,
+        ).pack(
+            side="left"
+        )
+
+        self.foreground_var = tk.StringVar(
+            value="No foreground selected"
+        )
+
+        ttk.Label(
+            foreground_row,
+            textvariable=self.foreground_var,
+            width=55,
+        ).pack(
+            side="left",
+            padx=(10, 0),
+        )
+
+        # Background
+
+        background_row = ttk.Frame(
+            artwork_box
+        )
+
+        background_row.pack(
+            fill="x"
+        )
+
+        ttk.Button(
+            background_row,
+            text="Select background…",
+            command=self.select_background,
+        ).pack(
+            side="left"
+        )
+
+        self.background_var = tk.StringVar(
+            value="No background selected"
+        )
+
+        ttk.Label(
+            background_row,
+            textvariable=self.background_var,
+            width=55,
+        ).pack(
+            side="left",
+            padx=(10, 0),
+        )
+
+        ttk.Label(
+            artwork_box,
+            text=(
+                "Foreground replaces the A inside the front artwork box. "
+                "Background is drawn underneath the entire insert."
+            ),
+        ).pack(
+            anchor="w",
+            pady=(7, 0),
+        )
+
+        # ----------------------------------------------------
+        # Font color
+        # ----------------------------------------------------
+
+        color_box = ttk.LabelFrame(
+            outer,
+            text="Font / line color",
+            padding=10,
+        )
+
+        color_box.pack(
+            fill="x",
+            pady=(12, 0),
+        )
+
+        color_row = ttk.Frame(
+            color_box
+        )
+
+        color_row.pack(
+            fill="x"
+        )
+
+        self.color_preview = tk.Label(
+            color_row,
+            text="     ",
+            bg="#000000",
+            relief="solid",
+            borderwidth=1,
+        )
+
+        self.color_preview.pack(
+            side="left"
+        )
+
+        ttk.Button(
+            color_row,
+            text="Choose color…",
+            command=self.choose_font_color,
+        ).pack(
+            side="left",
+            padx=(10, 8),
+        )
+
+        self.color_hex_var = tk.StringVar(
+            value="#000000"
+        )
+
+        ttk.Label(
+            color_row,
+            textvariable=self.color_hex_var,
+        ).pack(
+            side="left"
+        )
+
+        # ----------------------------------------------------
+        # Detected tapes
+        # ----------------------------------------------------
 
         tapes_box = ttk.LabelFrame(
             outer,
@@ -1470,7 +1966,7 @@ class App:
                 "b",
             ),
             show="headings",
-            height=12,
+            height=10,
         )
 
         self.tree.heading(
@@ -1496,12 +1992,12 @@ class App:
 
         self.tree.column(
             "a",
-            width=240,
+            width=260,
         )
 
         self.tree.column(
             "b",
-            width=240,
+            width=260,
         )
 
         self.tree.pack(
@@ -1525,6 +2021,10 @@ class App:
             yscrollcommand=scrollbar.set
         )
 
+        # ----------------------------------------------------
+        # Status
+        # ----------------------------------------------------
+
         self.status = tk.StringVar(
             value=(
                 "Select a mixtape folder "
@@ -1540,6 +2040,10 @@ class App:
             pady=(0, 6),
         )
 
+        # ----------------------------------------------------
+        # Generate
+        # ----------------------------------------------------
+
         self.generate_btn = ttk.Button(
             outer,
             text="Generate A4 PDF",
@@ -1551,7 +2055,128 @@ class App:
             anchor="e"
         )
 
-    def select_folder(self):
+
+    # ========================================================
+    # Image picker
+    # ========================================================
+
+    def select_image(
+        self,
+        title,
+    ):
+
+        return filedialog.askopenfilename(
+            title=title,
+            filetypes=[
+                (
+                    "Image files",
+                    "*.png *.jpg *.jpeg *.webp "
+                    "*.bmp *.gif *.tif *.tiff",
+                ),
+                (
+                    "All files",
+                    "*.*",
+                ),
+            ],
+        )
+
+
+    def select_foreground(
+        self
+    ):
+
+        selected = self.select_image(
+            "Select foreground artwork"
+        )
+
+        if not selected:
+            return
+
+        self.foreground_path = Path(
+            selected
+        )
+
+        self.foreground_var.set(
+            self.foreground_path.name
+        )
+
+        self.status.set(
+            "Foreground selected."
+        )
+
+
+    def select_background(
+        self
+    ):
+
+        selected = self.select_image(
+            "Select background artwork"
+        )
+
+        if not selected:
+            return
+
+        self.background_path = Path(
+            selected
+        )
+
+        self.background_var.set(
+            self.background_path.name
+        )
+
+        self.status.set(
+            "Background selected."
+        )
+
+
+    # ========================================================
+    # Font color picker
+    # ========================================================
+
+    def choose_font_color(
+        self
+    ):
+
+        result = colorchooser.askcolor(
+            color=self.font_color_hex,
+            title="Choose insert font color",
+        )
+
+        rgb, hex_value = result
+
+        if not rgb or not hex_value:
+            return
+
+        self.font_color = (
+            rgb[0] / 255.0,
+            rgb[1] / 255.0,
+            rgb[2] / 255.0,
+        )
+
+        self.font_color_hex = (
+            hex_value
+        )
+
+        self.color_hex_var.set(
+            hex_value
+        )
+
+        self.color_preview.configure(
+            bg=hex_value
+        )
+
+        self.status.set(
+            f"Font color: {hex_value}"
+        )
+
+
+    # ========================================================
+    # Folder
+    # ========================================================
+
+    def select_folder(
+        self
+    ):
 
         selected = filedialog.askdirectory(
             title=(
@@ -1562,20 +2187,30 @@ class App:
         if not selected:
             return
 
-        folder = Path(selected)
+        folder = Path(
+            selected
+        )
 
         try:
+
             tapes = scan_mixtape(
                 folder
             )
+
         except Exception as exc:
+
             messagebox.showerror(
                 "TapeMaker",
-                f"Could not read folder:\n\n{exc}",
+                (
+                    "Could not read folder:"
+                    f"\n\n{exc}"
+                ),
             )
+
             return
 
         if not tapes:
+
             messagebox.showwarning(
                 "TapeMaker",
                 (
@@ -1583,6 +2218,7 @@ class App:
                     ".txt manifests were found."
                 ),
             )
+
             return
 
         self.folder = folder
@@ -1592,23 +2228,22 @@ class App:
             str(folder)
         )
 
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        for item in (
+            self.tree.get_children()
+        ):
+            self.tree.delete(
+                item
+            )
 
-        for index, (tape_number, sides) in enumerate(
-            tapes.items(),
-            start=1,
+        for tape_number, sides in (
+            tapes.items()
         ):
 
             self.tree.insert(
                 "",
                 "end",
                 values=(
-                    (
-                        f"Volume {index}"
-                        if len(tapes) > 1
-                        else "Single tape"
-                    ),
+                    f"Tape {tape_number:02d}",
                     (
                         "Found"
                         if "A" in sides
@@ -1631,7 +2266,14 @@ class App:
             state="normal"
         )
 
-    def generate(self):
+
+    # ========================================================
+    # Generate
+    # ========================================================
+
+    def generate(
+        self
+    ):
 
         if not self.folder:
             return
@@ -1664,6 +2306,15 @@ class App:
                 self.folder,
                 Path(output),
                 template,
+                foreground_path=(
+                    self.foreground_path
+                ),
+                background_path=(
+                    self.background_path
+                ),
+                font_color=(
+                    self.font_color
+                ),
             )
 
         except Exception as exc:
@@ -1688,35 +2339,12 @@ class App:
             (
                 f"Generated {count} A4 page(s).\n\n"
                 f"Template: {template}\n"
+                f"Font color: "
+                f"{self.font_color_hex}\n"
                 "Scale: 100% / Actual Size\n\n"
                 "Do not use 'Fit to Page'."
             ),
         )
-
-
-# ============================================================
-# Parser self-test
-# ============================================================
-
-def parser_self_test(path: Path):
-    """
-    Useful for verifying the exact Compiler manifest without
-    opening the GUI:
-
-        python cassette_insert_generator.py --test "Tape 01 - Side A.txt"
-    """
-
-    manifest = parse_manifest(path)
-
-    print(f"Mixtape: {manifest['name']}")
-    print(f"Tape: {manifest['tape']}")
-    print(f"Side: {manifest['side']}")
-    print(f"Tracks: {len(manifest['tracks'])}")
-    print()
-
-    for number, title, duration in manifest["tracks"]:
-        suffix = f" [{duration}]" if duration else ""
-        print(f"{int(number)}. {title}{suffix}")
 
 
 # ============================================================
