@@ -83,22 +83,38 @@ MM = 72.0 / 25.4
 
 A4_W, A4_H = A4
 
-CARD_H_MM = 102.0
-BACK_W_MM = 63.0
-SPINE_W_MM = 4.0
-FRONT_W_MM = 63.0
+# Standard Norelco J-card
+#
+# Height:
+#     101.6 mm / 4"
+#
+# Width:
+#     25.4 mm  J-flap
+#     12.7 mm  spine
+#     65.09 mm front
+#
+# Total:
+#     103.19 × 101.6 mm
+#
+# This is the physical trim size.
+# Bleed/crop marks are drawn outside this area.
+
+CARD_H_MM = 101.6
+
+J_FLAP_W_MM = 25.4
+SPINE_W_MM = 12.7
+FRONT_W_MM = 65.09
 
 CARD_W_MM = (
-    BACK_W_MM
+    J_FLAP_W_MM
     + SPINE_W_MM
     + FRONT_W_MM
-    + SPINE_W_MM
 )
 
 PAGE_MARGIN_MM = 10.0
 
 CARD_H = CARD_H_MM * MM
-BACK_W = BACK_W_MM * MM
+J_FLAP_W = J_FLAP_W_MM * MM
 SPINE_W = SPINE_W_MM * MM
 FRONT_W = FRONT_W_MM * MM
 CARD_W = CARD_W_MM * MM
@@ -828,7 +844,7 @@ def fold_line(
 
 
 # ============================================================
-# Back / Tracklist
+# J-flap / Tracklist
 # ============================================================
 
 def draw_back_tracklists(
@@ -841,21 +857,40 @@ def draw_back_tracklists(
     font_color,
 ):
 
-    padding = 4.5 * MM
+    # --------------------------------------------------------
+    # The standard Norelco J-flap is only 25.4 mm wide.
+    #
+    # Keep this panel intentionally compact.
+    # --------------------------------------------------------
+
+    padding = 2.0 * MM
+
+    usable_width = (
+        J_FLAP_W
+        - 2 * padding
+    )
 
     c.setFillColor(
         font_color
     )
 
+    # --------------------------------------------------------
+    # Mixtape name
+    # --------------------------------------------------------
+
     centered(
         c,
         mixtape_name,
         x + padding,
-        y + CARD_H - 9 * MM,
-        BACK_W - 2 * padding,
+        y + CARD_H - 6 * MM,
+        usable_width,
         BOLD,
-        10,
+        4.2,
     )
+
+    # --------------------------------------------------------
+    # Volume
+    # --------------------------------------------------------
 
     if volume_label:
 
@@ -863,44 +898,36 @@ def draw_back_tracklists(
             c,
             volume_label,
             x + padding,
-            y + CARD_H - 15 * MM,
-            BACK_W - 2 * padding,
+            y + CARD_H - 10 * MM,
+            usable_width,
             REGULAR,
-            6.5,
+            3.5,
         )
 
-    gap = 3 * MM
+    # --------------------------------------------------------
+    # Tracklist
+    # --------------------------------------------------------
 
-    column_width = (
-        BACK_W
-        - 2 * padding
-        - gap
-    ) / 2
-
-    left_x = (
-        x + padding
-    )
-
-    right_x = (
-        left_x
-        + column_width
-        + gap
-    )
-
-    top_y = (
+    cursor_y = (
         y
         + CARD_H
-        - 24 * MM
+        - 16 * MM
     )
 
     bottom_y = (
         y
-        + 7 * MM
+        + 3 * MM
     )
 
-    def draw_side(
-        side_name,
-        column_x,
+    track_font_size = 3.4
+
+    line_height = (
+        2.05 * MM
+    )
+
+    for side_name in (
+        "A",
+        "B",
     ):
 
         side = sides.get(
@@ -913,29 +940,29 @@ def draw_back_tracklists(
             [],
         )
 
+        if not tracks:
+            continue
+
+        if cursor_y < bottom_y:
+            break
+
         c.setFillColor(
             font_color
         )
 
         c.setFont(
             BOLD,
-            6.5,
+            4.0,
         )
 
         c.drawString(
-            column_x,
-            top_y,
+            x + padding,
+            cursor_y,
             f"SIDE {side_name}",
         )
 
-        cursor_y = (
-            top_y
-            - 5 * MM
-        )
-
-        size = 5.8
-        line_height = (
-            3.25 * MM
+        cursor_y -= (
+            3.0 * MM
         )
 
         for (
@@ -953,6 +980,7 @@ def draw_back_tracklists(
             )
 
             if duration:
+
                 text += (
                     f" [{duration}]"
                 )
@@ -961,8 +989,8 @@ def draw_back_tracklists(
                 c,
                 text,
                 REGULAR,
-                size,
-                column_width,
+                track_font_size,
+                usable_width,
             )
 
             for line in lines:
@@ -976,11 +1004,11 @@ def draw_back_tracklists(
 
                 c.setFont(
                     REGULAR,
-                    size,
+                    track_font_size,
                 )
 
                 c.drawString(
-                    column_x,
+                    x + padding,
                     cursor_y,
                     line,
                 )
@@ -990,18 +1018,12 @@ def draw_back_tracklists(
                 )
 
             cursor_y -= (
-                0.8 * MM
+                0.25 * MM
             )
 
-    draw_side(
-        "A",
-        left_x,
-    )
-
-    draw_side(
-        "B",
-        right_x,
-    )
+        cursor_y -= (
+            1.2 * MM
+        )
 
 
 # ============================================================
@@ -1126,7 +1148,7 @@ def draw_front(
     if template == "J-card":
 
         cassette_x = (
-            x + 10 * MM
+            x + 8 * MM
         )
 
         cassette_y = (
@@ -1135,7 +1157,7 @@ def draw_front(
 
         cassette_w = (
             FRONT_W
-            - 20 * MM
+            - 16 * MM
         )
 
         cassette_h = (
@@ -1160,7 +1182,7 @@ def draw_front(
 
         window_x = (
             cassette_x
-            + 10 * MM
+            + 9 * MM
         )
 
         window_y = (
@@ -1170,7 +1192,7 @@ def draw_front(
 
         window_w = (
             cassette_w
-            - 20 * MM
+            - 18 * MM
         )
 
         window_h = (
@@ -1186,7 +1208,7 @@ def draw_front(
         )
 
         c.circle(
-            window_x + 9 * MM,
+            window_x + 8 * MM,
             window_y + window_h / 2,
             4 * MM,
         )
@@ -1194,7 +1216,7 @@ def draw_front(
         c.circle(
             window_x
             + window_w
-            - 9 * MM,
+            - 8 * MM,
             window_y + window_h / 2,
             4 * MM,
         )
@@ -1307,18 +1329,21 @@ def draw_insert(
     font_color,
 ):
 
-    spine1_x = (
-        x + BACK_W
+    # ========================================================
+    # Standard Norelco J-card geometry
+    #
+    # J-flap | Spine | Front
+    #
+    # 25.4   | 12.7  | 65.09 mm
+    # ========================================================
+
+    spine_x = (
+        x + J_FLAP_W
     )
 
     front_x = (
-        spine1_x
+        spine_x
         + SPINE_W
-    )
-
-    spine2_x = (
-        front_x
-        + FRONT_W
     )
 
     # ========================================================
@@ -1363,23 +1388,24 @@ def draw_insert(
         fill=0,
     )
 
+    # ========================================================
+    # J-flap / Spine fold
+    # ========================================================
+
     fold_line(
         c,
-        spine1_x,
+        spine_x,
         y,
         CARD_H,
     )
+
+    # ========================================================
+    # Spine / Front fold
+    # ========================================================
 
     fold_line(
         c,
         front_x,
-        y,
-        CARD_H,
-    )
-
-    fold_line(
-        c,
-        spine2_x,
         y,
         CARD_H,
     )
@@ -1393,7 +1419,7 @@ def draw_insert(
     )
 
     # ========================================================
-    # Back
+    # J-flap / Tracklist
     # ========================================================
 
     draw_back_tracklists(
@@ -1407,12 +1433,12 @@ def draw_insert(
     )
 
     # ========================================================
-    # Spine 1
+    # Spine
     # ========================================================
 
     draw_spine(
         c,
-        spine1_x,
+        spine_x,
         y,
         (
             mixtape_name
@@ -1439,25 +1465,6 @@ def draw_insert(
         template,
         foreground_path,
         background_path,
-        font_color,
-    )
-
-    # ========================================================
-    # Spine 2
-    # ========================================================
-
-    draw_spine(
-        c,
-        spine2_x,
-        y,
-        (
-            mixtape_name
-            + (
-                f" — {volume_label}"
-                if volume_label
-                else ""
-            )
-        ),
         font_color,
     )
 
