@@ -1091,14 +1091,43 @@ def draw_front(
 
     if template == "Minimal":
 
+        artwork_x = (
+            x + 5 * MM
+        )
+
+        artwork_y = (
+            y + 20 * MM
+        )
+
+        artwork_w = (
+            FRONT_W
+            - 10 * MM
+        )
+
+        artwork_h = (
+            CARD_H
+            - 46 * MM
+        )
+
+        if foreground_path:
+
+            draw_cover_image(
+                c,
+                foreground_path,
+                artwork_x,
+                artwork_y,
+                artwork_w,
+                artwork_h,
+            )
+
         centered(
             c,
             mixtape_name,
             x + 4 * MM,
-            y + CARD_H / 2,
+            y + CARD_H - 12 * MM,
             FRONT_W - 8 * MM,
             BOLD,
-            13,
+            11,
         )
 
         if volume_label:
@@ -1107,7 +1136,7 @@ def draw_front(
                 c,
                 volume_label,
                 x + 4 * MM,
-                y + CARD_H / 2 - 8 * MM,
+                y + CARD_H - 19 * MM,
                 FRONT_W - 8 * MM,
                 REGULAR,
                 7,
@@ -1147,79 +1176,34 @@ def draw_front(
 
     if template == "J-card":
 
-        cassette_x = (
-            x + 8 * MM
-        )
+        if foreground_path:
 
-        cassette_y = (
-            y + 27 * MM
-        )
+            artwork_x = (
+                x + 5 * MM
+            )
 
-        cassette_w = (
-            FRONT_W
-            - 16 * MM
-        )
+            artwork_y = (
+                y + 20 * MM
+            )
 
-        cassette_h = (
-            38 * MM
-        )
+            artwork_w = (
+                FRONT_W
+                - 10 * MM
+            )
 
-        c.setLineWidth(
-            0.8
-        )
+            artwork_h = (
+                CARD_H
+                - 46 * MM
+            )
 
-        c.setStrokeColor(
-            font_color
-        )
-
-        c.roundRect(
-            cassette_x,
-            cassette_y,
-            cassette_w,
-            cassette_h,
-            3 * MM,
-        )
-
-        window_x = (
-            cassette_x
-            + 9 * MM
-        )
-
-        window_y = (
-            cassette_y
-            + 10 * MM
-        )
-
-        window_w = (
-            cassette_w
-            - 18 * MM
-        )
-
-        window_h = (
-            12 * MM
-        )
-
-        c.roundRect(
-            window_x,
-            window_y,
-            window_w,
-            window_h,
-            2 * MM,
-        )
-
-        c.circle(
-            window_x + 8 * MM,
-            window_y + window_h / 2,
-            4 * MM,
-        )
-
-        c.circle(
-            window_x
-            + window_w
-            - 8 * MM,
-            window_y + window_h / 2,
-            4 * MM,
-        )
+            draw_cover_image(
+                c,
+                foreground_path,
+                artwork_x,
+                artwork_y,
+                artwork_w,
+                artwork_h,
+            )
 
     # --------------------------------------------------------
     # Full insert
@@ -2309,7 +2293,7 @@ class App:
             defaultextension=".pdf",
             initialfile=(
                 f"{self.folder.name} - "
-                "Inserts.pdf"
+                f"{template}.pdf"
             ),
             filetypes=[
                 (
