@@ -1,4 +1,4 @@
-# TapeMaker
+**# TapeMaker**
 
 A small toolkit for preparing, recording, and physically finishing music onto real cassette tapes.
 
@@ -6,8 +6,11 @@ TapeMaker is designed around the workflow of making real cassette mixtapes from 
 
 ```text
 Music library
+
      │
+
      ▼
+
 ┌────────────────────┐
 │ Cassette Compiler  │
 └─────────┬──────────┘
@@ -24,13 +27,11 @@ Music library
           │
           ▼
          K7
-
-              +
-
-       Cassette Insert
+             +
+      Cassette Insert
           Generator
-              │
-              ▼
+             │
+             ▼
        Printed J-card /
         cassette insert
 ```
@@ -122,9 +123,13 @@ It supports:
 TapeMaker/
 
 ├── cassette_compiler.py
+
 ├── cassette_recorder.py
+
 ├── cassette_insert_generator.py
+
 ├── requirements.txt
+
 └── README.md
 ```
 
@@ -132,15 +137,21 @@ The three programs have deliberately different responsibilities.
 
 ```text
 cassette_compiler.py
+
     │
+
     └── prepares the tape
 
 cassette_recorder.py
+
     │
+
     └── plays the prepared tape
 
 cassette_insert_generator.py
+
     │
+
     └── prepares the physical printed insert
 ```
 
@@ -237,19 +248,29 @@ For example:
 MUSIC/
 
 ├── Depeche Mode 101/
+
 │   ├── 01.flac
+
 │   ├── 02.flac
+
 │   ├── 03.flac
+
 │   └── ...
 
 ├── Duran Duran/
+
 │   ├── 01.flac
+
 │   ├── 02.flac
+
 │   └── ...
 
 └── Good Girls/
+
     ├── 01.flac
+
     ├── 02.flac
+
     └── ...
 ```
 
@@ -312,21 +333,33 @@ cassette_output/
     ├── Depeche Mode 101/
 
     │   ├── Tape 01 - Side A.wav
+
     │   ├── Tape 01 - Side A.txt
+
     │   ├── Tape 01 - Side B.wav
+
     │   ├── Tape 01 - Side B.txt
+
     │   ├── Tape 02 - Side A.wav
+
     │   └── Tape 02 - Side A.txt
+
     │
+
     ├── Duran Duran/
 
     │   ├── Tape 01 - Side A.wav
+
     │   ├── Tape 01 - Side A.txt
+
     │   └── ...
+
     │
+
     └── Good Girls/
 
         ├── Tape 01 - Side A.wav
+
         └── ...
 ```
 
@@ -340,8 +373,11 @@ cassette_output/
     └── Depeche Mode 101/
 
         ├── Tape 01 - Side A.wav
+
         ├── Tape 01 - Side A.txt
+
         ├── Tape 01 - Side B.wav
+
         └── Tape 01 - Side B.txt
 ```
 
@@ -368,6 +404,7 @@ Example:
 
 ```text
 Tape 01 - Side A.wav
+
 Tape 01 - Side A.txt
 ```
 
@@ -398,13 +435,21 @@ Its job is simply:
 
 ```text
 Select compiled mixtape
+
         ↓
+
 Select tape
+
         ↓
+
 Select side
+
         ↓
+
 Select audio output
+
         ↓
+
 Play
 ```
 
@@ -424,10 +469,15 @@ cassette_output/
     └── Depeche Mode 101/
 
         ├── Tape 01 - Side A.wav
+
         ├── Tape 01 - Side A.txt
+
         ├── Tape 01 - Side B.wav
+
         ├── Tape 01 - Side B.txt
+
         ├── Tape 02 - Side A.wav
+
         └── Tape 02 - Side B.wav
 ```
 
@@ -441,11 +491,15 @@ The Recorder scans that directory and automatically discovers:
 
 ```text
 Tape 01
+
 ├── Side A
+
 └── Side B
 
 Tape 02
+
 ├── Side A
+
 └── Side B
 ```
 
@@ -480,16 +534,19 @@ It reads the compiled WAV file directly:
 Tape 01 - Side A.wav
 
         │
+
         ▼
 
 Cassette Recorder
 
         │
+
         ▼
 
 Selected audio device
 
         │
+
         ▼
 
 Cassette deck
@@ -549,6 +606,7 @@ Selects:
 
 ```text
 A
+
 B
 ```
 
@@ -608,12 +666,19 @@ cassette_output/
     └── Sexy times/
 
         ├── Tape 01 - Side A.wav
+
         ├── Tape 01 - Side A.txt
+
         ├── Tape 01 - Side B.wav
+
         ├── Tape 01 - Side B.txt
+
         ├── Tape 02 - Side A.wav
+
         ├── Tape 02 - Side A.txt
+
         ├── Tape 02 - Side B.wav
+
         └── Tape 02 - Side B.txt
 ```
 
@@ -643,21 +708,33 @@ The application opens a graphical interface where the user can select the compil
 
 The Insert Generator provides three layouts.
 
+All three templates use the same physical cassette geometry and the same defined front foreground artwork area.
+
 ## J-card
 
 The J-card layout is intended to reproduce the traditional cassette case insert structure.
 
-It includes the cassette back, spines, and front sections using the physical cassette geometry.
+It includes the cassette back, spine, and front sections using the physical cassette geometry.
+
+The front uses the same defined foreground artwork area as the other templates.
+
+When no foreground artwork is selected, the J-card does not generate a decorative cassette illustration or placeholder artwork.
 
 ## Minimal
 
 The Minimal layout provides a cleaner and less information-dense presentation while retaining the physical cassette insert structure.
 
+The mixtape title and volume label are placed above the artwork area.
+
+If foreground artwork is selected, it is placed inside the same defined artwork area used by the J-card and Full insert templates.
+
 ## Full insert
 
 The Full insert provides the largest amount of printed information and includes the artwork area on the front.
 
-All three layouts are generated using the same physical cassette dimensions.
+The foreground artwork is placed inside the defined artwork area.
+
+All three layouts are generated using the same physical cassette dimensions and share the same foreground artwork area.
 
 ---
 
@@ -665,32 +742,28 @@ All three layouts are generated using the same physical cassette dimensions.
 
 The generated insert is designed around a real cassette case rather than an arbitrary page layout.
 
-The card dimensions are:
+The current standard Norelco J-card geometry is:
 
 ```text
-Height: 102 mm
+J-flap: 25.4 mm
+Spine:  12.7 mm
+Front:  65.09 mm
 
-Back:    63 mm
-Spine:    4 mm
-Front:   63 mm
-Spine:    4 mm
+Total width: 103.19 mm
+Height:      101.6 mm
 ```
 
-Total unfolded width:
+The unfolded insert therefore measures:
 
 ```text
-63 + 4 + 63 + 4 = 134 mm
-```
-
-Therefore the insert is:
-
-```text
-134 × 102 mm
+103.19 × 101.6 mm
 ```
 
 The insert is placed on an A4 page.
 
 The A4 page is used as the printable sheet; it is not the physical size of the cassette insert itself.
+
+The insert uses a 10 mm page margin.
 
 ---
 
@@ -702,7 +775,9 @@ When printing:
 
 ```text
 Paper: A4
+
 Scale: 100%
+
 Size: Actual Size
 ```
 
@@ -710,7 +785,9 @@ Do **not** use:
 
 ```text
 Fit to Page
+
 Scale to Fit
+
 Shrink oversized pages
 ```
 
@@ -745,22 +822,46 @@ The Insert Generator supports separate background and foreground artwork.
 
 ## Background artwork
 
-A background image can be applied to the insert.
+A background image can be applied to the entire insert.
 
-The background is drawn across the insert area and is allowed to extend into the bleed region.
+The background is drawn underneath the complete insert structure and can extend across the insert's full physical area.
 
-This is useful for full-bleed artwork where the printed image should continue past the final trim edge.
+This is useful for full-bleed artwork where the printed image should continue across the cassette insert.
 
 ## Foreground artwork
 
-A foreground image can be placed in the artwork area of the Full insert template.
+A foreground image can be placed in the defined front artwork area.
+
+All three templates use the same foreground artwork box:
+
+```text
+X:      +5 mm from the front edge
+Y:      +20 mm from the bottom
+Width:  FRONT_W - 10 mm
+Height: CARD_H - 46 mm
+```
+
+The artwork area therefore remains physically consistent when switching between:
+
+```text
+J-card
+Minimal
+Full insert
+```
+
+The foreground image uses cover/crop behavior.
+
+It completely fills the defined artwork area while preserving its aspect ratio. If the source image has a different aspect ratio, excess image content is cropped.
 
 Foreground artwork is handled separately from the background, allowing combinations such as:
 
 ```text
 Background only
+
 Background + foreground
+
 Foreground only
+
 No artwork
 ```
 
@@ -793,11 +894,16 @@ This allows track and mixtape names containing Unicode characters to be printed 
 Examples include:
 
 ```text
-： 
+：
+
 é
+
 ñ
+
 ü
+
 ø
+
 ç
 ```
 
@@ -835,14 +941,23 @@ Supported audio extensions include:
 
 ```text
 .mp3
+
 .flac
+
 .wav
+
 .m4a
+
 .aac
+
 .ogg
+
 .opus
+
 .wma
+
 .aiff
+
 .aif
 ```
 
@@ -868,8 +983,11 @@ When more than one physical tape is detected, the Generator assigns sequential v
 
 ```text
 Volume 1
+
 Volume 2
+
 Volume 3
+
 ...
 ```
 
@@ -895,13 +1013,27 @@ For example, a two-tape mixtape produces:
 Sexy times
 
 Page 1
+
     Volume 1
 
 Page 2
+
     Volume 2
 ```
 
 Each page contains the complete insert for that physical cassette, including the appropriate Side A and Side B tracklists.
+
+The suggested output filename includes the selected template:
+
+```text
+Sexy times - J-card.pdf
+
+Sexy times - Minimal.pdf
+
+Sexy times - Full insert.pdf
+```
+
+This allows multiple template versions of the same mixtape to be generated and kept separately without manually renaming the files.
 
 ---
 
@@ -919,8 +1051,11 @@ MUSIC/
 └── My Mixtape/
 
     ├── 01.flac
+
     ├── 02.flac
+
     ├── 03.flac
+
     └── ...
 ```
 
@@ -940,8 +1075,11 @@ cassette_output/
     └── My Mixtape/
 
         ├── Tape 01 - Side A.wav
+
         ├── Tape 01 - Side A.txt
+
         ├── Tape 01 - Side B.wav
+
         └── Tape 01 - Side B.txt
 ```
 
@@ -965,6 +1103,7 @@ Print the generated PDF on A4 at:
 
 ```text
 100%
+
 Actual Size
 ```
 
@@ -977,7 +1116,7 @@ Use the generated cut marks and fold lines to trim and fold the insert.
 The resulting card is designed around the physical:
 
 ```text
-134 × 102 mm
+103.19 × 101.6 mm
 ```
 
 cassette insert dimensions.
@@ -1002,6 +1141,7 @@ For example:
 
 ```text
 Tape 01
+
 Side A
 ```
 
@@ -1027,18 +1167,30 @@ For a physical cassette recording setup:
 PC
 
  │
+
  ├── Normal system audio
+
  │       └── headphones / speakers
+
  │
+
  └── TapeMaker Recorder
+
           │
+
           └── dedicated USB audio output
+
                    │
+
                    ▼
-              Cassette deck
+
+               Cassette deck
+
                    │
+
                    ▼
-                  K7
+
+                   K7
 ```
 
 The cassette deck should be connected to a dedicated output whenever possible.
@@ -1053,14 +1205,23 @@ The Compiler supports:
 
 ```text
 .mp3
+
 .flac
+
 .wav
+
 .m4a
+
 .aac
+
 .ogg
+
 .opus
+
 .wma
+
 .aiff
+
 .aif
 ```
 
@@ -1076,26 +1237,47 @@ The complete TapeMaker workflow is:
 
 ```text
 Digital music
+
       │
+
       ▼
+
 Cassette Compiler
+
       │
+
       ├── WAV Side A
+
       ├── WAV Side B
+
       └── TXT manifests
+
              │
+
              ├───────────────┐
+
              │               │
+
              ▼               ▼
+
      Cassette Recorder   Insert Generator
+
              │               │
+
              ▼               ▼
+
        Cassette deck     Printable PDF
+
              │               │
+
              ▼               ▼
+
           Magnetic       Cut + fold
+
              │               │
+
              ▼               ▼
+
              K7        Cassette insert
 ```
 
@@ -1142,15 +1324,15 @@ The Recorder handles the physical playback stage:
 ```text
 WAV
 
- ↓
+↓
 
 Selected hardware output
 
- ↓
+↓
 
 Cassette deck
 
- ↓
+↓
 
 Magnetic tape
 ```
